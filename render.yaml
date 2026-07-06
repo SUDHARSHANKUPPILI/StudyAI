@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: studyai-api
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 10000
+      - key: FIREBASE_CREDENTIALS_PATH
+        value: config/firebase-key.json
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

@@ -1,0 +1,14 @@
+runtime: python312
+
+# Gunicorn serves the WSGI app; $PORT is injected by App Engine at runtime.
+entrypoint: gunicorn -b :$PORT main:app
+
+# Automatic scaling (free-tier friendly)
+automatic_scaling:
+  min_idle_instances: 0
+  max_instances: 3
+  target_cpu_utilization: 0.65
+
+# Environment variables available to the app
+env_variables:
+  FLASK_ENV: production
