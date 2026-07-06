@@ -6,7 +6,7 @@ services:
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn run:app
     envVars:
       - key: FLASK_ENV
         value: production
@@ -20,3 +20,5 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: ALLOWED_CORS_ORIGINS
+        value: '*'
