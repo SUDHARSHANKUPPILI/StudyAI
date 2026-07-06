@@ -115,26 +115,11 @@ def init_firebase(app):
                     'storageBucket': bucket_name
                 })
             else:
-                err_msg = (
-                    f"Firebase credentials key file not found at '{cred_path}'. "
-                    "Please save your service account credentials to that path, or configure the "
-                    "FIREBASE_CREDENTIALS_JSON environment variable with the JSON contents."
+                logger.warning(
+                    f"Firebase credentials key file not found at '{cred_path}' and "
+                    "FIREBASE_CREDENTIALS_JSON environment variable is not configured. "
+                    "StudyAI will fall back to local in-memory states."
                 )
-                logger.error(err_msg)
-                
-                # In production, missing credentials must raise a startup error
-                if app.config.get('FLASK_ENV') == 'production':
-                    raise FileNotFoundError(err_msg)
-                
-                # In development, try falling back to Application Default Credentials
-                try:
-                    firebase_admin.initialize_app(options={
-                        'storageBucket': bucket_name
-                    })
-                    logger.info("Firebase initialized with Application Default Credentials.")
-                except Exception as adc_err:
-                    logger.warning(f"Application Default Credentials initialization skipped: {adc_err}. "
-                                   "StudyAI will fall back to local in-memory states.")
         except Exception as e:
             logger.error(f"Firebase Admin SDK initialization error: {e}")
 

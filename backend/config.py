@@ -61,13 +61,14 @@ def verify_startup_config():
         missing = []
         if not groq_key or groq_key.startswith("gsk_your_groq"):
             missing.append("GROQ_API_KEY")
-        if not bucket_name:
-            missing.append("FIREBASE_STORAGE_BUCKET")
             
         if missing:
             critical_err = f"CRITICAL Startup Failure: Missing required production credentials: {', '.join(missing)}"
             log.critical(critical_err)
             raise ValueError(critical_err)
+            
+        if not bucket_name:
+            log.warning("System Boot Alert: FIREBASE_STORAGE_BUCKET is not configured. StudyAI will fall back to local in-memory states.")
     else:
         # Development warnings
         if not groq_key or groq_key.startswith("gsk_your_groq"):
