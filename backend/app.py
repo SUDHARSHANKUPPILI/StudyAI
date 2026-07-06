@@ -94,12 +94,21 @@ def register_error_handlers(app):
 
 def init_firebase(app):
     """Initializes Firebase Admin SDK."""
+    import json
     cred_path = app.config['FIREBASE_CREDENTIALS_PATH']
     bucket_name = app.config['FIREBASE_STORAGE_BUCKET']
+    firebase_json_str = os.environ.get('FIREBASE_CREDENTIALS_JSON')
     
     if not firebase_admin._apps:
         try:
-            if os.path.exists(cred_path):
+            if firebase_json_str:
+                logger.info("Initializing Firebase with credentials from FIREBASE_CREDENTIALS_JSON env variable.")
+                cred_dict = json.loads(firebase_json_str)
+                cred = credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred, {
+                    'storageBucket': bucket_name
+                })
+            elif os.path.exists(cred_path):
                 logger.info(f"Initializing Firebase with key from: {cred_path}")
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred, {
