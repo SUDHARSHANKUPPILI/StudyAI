@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import authService from '../services/authService';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { auth, googleProvider } from '../config/firebase';
 
 const AuthContext = createContext();
 
@@ -8,61 +9,99 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('studyai_token'));
   const [loading, setLoading] = useState(true);
 
+  // Monitor Firebase Auth state changes automatically
   useEffect(() => {
-    const initializeAuth = async () => {
-      if (token) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
         try {
-          // Verify session on backend via authService
-          const response = await authService.getSession(token);
-          setUser(response.data.user);
+          const idToken = await firebaseUser.getIdToken(true);
+          localStorage.setItem('studyai_token', idToken);
+          setToken(idToken);
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || 'Student',
+            photoURL: firebaseUser.photoURL,
+            is_mock: false
+          });
         } catch (error) {
-          console.error("Token verification failed, resetting auth states:", error);
-          // If using development mock-token, let's preserve it to bypass server setup
-          if (token === "mock-token-123") {
-            setUser({
-              uid: "dev_user_123",
-              email: "student@studyai.edu",
-              name: "Dev Student",
-              is_mock: true
-            });
-          } else {
-            logout();
-          }
+          console.error("Error fetching Firebase ID Token:", error);
+          logout();
+        }
+      } else {
+        // If not authenticated by Firebase, verify if we have a dev mock-token bypass active
+        const localToken = localStorage.getItem('studyai_token');
+        if (localToken === "mock-token-123") {
+          setUser({
+            uid: "dev_user_123",
+            email: "student@studyai.edu",
+            name: "Dev Student",
+            is_mock: true
+          });
+        } else {
+          setUser(null);
+          setToken(null);
         }
       }
       setLoading(false);
-    };
+    });
 
-    initializeAuth();
-  }, [token]);
+    return () => unsubscribe();
+  }, []);
 
-  const login = async (email, password) => {
+  const loginWithGoogle = async () => {
     setLoading(true);
     try {
-      // Call mock login endpoint directly via authService
-      const response = await authService.loginMock(email, password);
-      
-      const { token: userToken, user: userData } = response.data;
-      localStorage.setItem('studyai_token', userToken);
-      setToken(userToken);
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      localStorage.setItem('studyai_token', idToken);
+      setToken(idToken);
+      const userData = {
+        uid: result.user.uid,
+        email: result.user.email,
+        name: result.user.displayName || 'Student',
+        photoURL: result.user.photoURL,
+        is_mock: false
+      };
       setUser(userData);
-      setLoading(false);
       return userData;
     } catch (error) {
-      setLoading(false);
-      console.error("Login failed:", error);
+      console.error("Google Sign-In failed:", error);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const logout = () => {
+  const loginMock = (email = "student@studyai.edu") => {
+    const mockToken = "mock-token-123";
+    const mockUser = {
+      uid: "dev_user_123",
+      email: email,
+      name: "Dev Student",
+      is_mock: true
+    };
+    localStorage.setItem('studyai_token', mockToken);
+    setToken(mockToken);
+    setUser(mockUser);
+    return mockUser;
+  };
+
+  const logout = async () => {
+    setLoading(true);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error signing out from Firebase:", error);
+    }
     localStorage.removeItem('studyai_token');
     setToken(null);
     setUser(null);
+    setLoading(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, token, loading, loginWithGoogle, loginMock, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );
