@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Base URL configuration for backend API
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Base URL configuration for backend API — set VITE_API_BASE_URL in Vercel dashboard or .env.production
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_URL,
