@@ -93,35 +93,68 @@ def register_error_handlers(app):
         )
 
 def init_firebase(app):
-    """Initializes Firebase Admin SDK."""
+    """
+    Initializes Firebase Admin SDK.
+
+    Priority:
+      1. FIREBASE_CREDENTIALS_JSON environment variable (production / Render)
+      2. Local firebase-key.json file (local development)
+      3. In-memory fallback (neither configured)
+    """
     import json
-    cred_path = app.config['FIREBASE_CREDENTIALS_PATH']
-    bucket_name = app.config['FIREBASE_STORAGE_BUCKET']
-    firebase_json_str = os.environ.get('FIREBASE_CREDENTIALS_JSON')
-    
-    if not firebase_admin._apps:
-        try:
-            if firebase_json_str:
-                logger.info("Initializing Firebase with credentials from FIREBASE_CREDENTIALS_JSON env variable.")
+
+    # Resolve the credentials file path to an absolute path so
+    # os.path.exists() works regardless of the Gunicorn working directory.
+    raw_cred_path = app.config.get('FIREBASE_CREDENTIALS_PATH', 'config/firebase-key.json')
+    cred_path = os.path.abspath(raw_cred_path)
+    bucket_name = app.config.get('FIREBASE_STORAGE_BUCKET', '')
+
+    firebase_json_str = os.environ.get('FIREBASE_CREDENTIALS_JSON', '').strip()
+
+    # Diagnostic boot log — visible in Render logs
+    logger.info(f"[Firebase] Checking FIREBASE_CREDENTIALS_JSON env var: {'SET (length=' + str(len(firebase_json_str)) + ')' if firebase_json_str else 'NOT SET'}")
+    logger.info(f"[Firebase] Checking key file at absolute path: {cred_path} — exists={os.path.exists(cred_path)}")
+    logger.info(f"[Firebase] Storage bucket: '{bucket_name}'")
+
+    if firebase_admin._apps:
+        logger.info("[Firebase] Admin SDK already initialized. Skipping.")
+        return
+
+    try:
+        if firebase_json_str:
+            # --- Production path: parse JSON from environment variable ---
+            logger.info("[Firebase] Initializing from FIREBASE_CREDENTIALS_JSON env variable.")
+            try:
                 cred_dict = json.loads(firebase_json_str)
-                cred = credentials.Certificate(cred_dict)
-                firebase_admin.initialize_app(cred, {
-                    'storageBucket': bucket_name
-                })
-            elif os.path.exists(cred_path):
-                logger.info(f"Initializing Firebase with key from: {cred_path}")
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred, {
-                    'storageBucket': bucket_name
-                })
-            else:
-                logger.warning(
-                    f"Firebase credentials key file not found at '{cred_path}' and "
-                    "FIREBASE_CREDENTIALS_JSON environment variable is not configured. "
-                    "StudyAI will fall back to local in-memory states."
+            except json.JSONDecodeError as json_err:
+                logger.error(
+                    f"[Firebase] FIREBASE_CREDENTIALS_JSON contains invalid JSON: {json_err}. "
+                    "Please verify the environment variable value in the Render Dashboard."
                 )
-        except Exception as e:
-            logger.error(f"Firebase Admin SDK initialization error: {e}")
+                return
+
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
+            logger.info("[Firebase] ✓ Successfully initialized from FIREBASE_CREDENTIALS_JSON.")
+
+        elif os.path.exists(cred_path):
+            # --- Local development path: load from firebase-key.json file ---
+            logger.info(f"[Firebase] Initializing from key file: {cred_path}")
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
+            logger.info(f"[Firebase] ✓ Successfully initialized from key file: {cred_path}")
+
+        else:
+            # --- Fallback: no credentials available ---
+            logger.warning(
+                "[Firebase] Neither FIREBASE_CREDENTIALS_JSON env var nor "
+                f"the key file at '{cred_path}' is available. "
+                "StudyAI will fall back to local in-memory states. "
+                "To fix on Render: add FIREBASE_CREDENTIALS_JSON in the Dashboard → Environment tab."
+            )
+
+    except Exception as e:
+        logger.error(f"[Firebase] Admin SDK initialization error: {e}", exc_info=True)
 
 def register_blueprints(app):
     """Registers Flask blueprints for different api endpoints."""
