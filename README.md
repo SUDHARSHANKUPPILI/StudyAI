@@ -112,18 +112,18 @@ Built with a **Flask** REST API backend powered by **Groq's Llama 3.3 70B** mode
 ## 🏗️ System Architecture
 
 ```mermaid
-graph TB
-    User(["👤 User Browser"])
-    Vercel["🌐 Vercel\nReact + Vite Frontend"]
-    Render["⚙️ Render\nFlask REST API"]
-    Groq["🤖 Groq Cloud\nLlama 3.3 70B"]
-    Firebase["🔥 Firebase\nFirestore + Storage"]
+graph TD
+    User[User Browser]
+    Vercel[Vercel React Frontend]
+    Render[Render Flask REST API]
+    Groq[Groq Cloud Llama 3.3 70B]
+    Firebase[Firebase Firestore and Storage]
 
-    User -->|"HTTPS"| Vercel
-    Vercel -->|"REST API calls\n/api/*"| Render
-    Render -->|"LLM inference"| Groq
-    Render -->|"Read/Write data\n& files"| Firebase
-    Firebase -->|"Stored materials\n& user data"| Render
+    User --> Vercel
+    Vercel --> Render
+    Render --> Groq
+    Render --> Firebase
+    Firebase --> Render
 ```
 
 ---
@@ -138,26 +138,26 @@ sequenceDiagram
     participant Groq as Groq LLM
     participant DB as Firebase
 
-    User->>Frontend: Upload PDF/DOCX/TXT
+    User->>Frontend: Upload document
     Frontend->>API: POST /api/study/upload
-    API->>API: Extract text (PyPDF/docx)
-    API->>DB: Store file + metadata
-    DB-->>API: material_id
-    API-->>Frontend: { material_id, filename }
+    API->>API: Extract text
+    API->>DB: Store file and metadata
+    DB-->>API: Return material_id
+    API-->>Frontend: Return material_id and filename
 
-    User->>Frontend: Generate Summary
+    User->>Frontend: Request Summary
     Frontend->>API: POST /api/ai/summary
     API->>DB: Fetch material text
-    API->>Groq: Prompt + document context
-    Groq-->>API: Structured markdown summary
-    API-->>Frontend: Summary text
+    API->>Groq: Request summary with text
+    Groq-->>API: Return summary markdown
+    API-->>Frontend: Return summary markdown
 
     User->>Frontend: Chat with Tutor
     Frontend->>API: POST /api/ai/tutor
     API->>DB: Fetch material text
-    API->>Groq: System prompt + doc context + message
-    Groq-->>API: Contextual AI response
-    API-->>Frontend: Tutor reply
+    API->>Groq: Send prompt with context
+    Groq-->>API: Return AI response
+    API-->>Frontend: Return AI response
 ```
 
 ---
