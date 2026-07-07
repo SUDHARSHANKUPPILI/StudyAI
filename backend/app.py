@@ -29,6 +29,10 @@ def create_app(config_name=None):
     # Initialize Firebase Admin SDK
     init_firebase(app)
     
+    # Initialize Groq AI client (singleton, validated at boot)
+    from services.groq_service import GroqService
+    GroqService.initialize()
+    
     # Register blueprints for routing
     register_blueprints(app)
     
@@ -38,10 +42,12 @@ def create_app(config_name=None):
     # Base healthcheck route
     @app.route('/health', methods=['GET'])
     def health_check():
+        from services.groq_service import GroqService
         return jsonify({
             'status': 'healthy',
             'env': app.config['FLASK_ENV'],
-            'firebase_initialized': len(firebase_admin._apps) > 0
+            'firebase_initialized': len(firebase_admin._apps) > 0,
+            'groq_initialized': GroqService._client is not None
         }), 200
 
     @app.route('/', methods=['GET'])

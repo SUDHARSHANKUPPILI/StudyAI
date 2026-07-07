@@ -10,18 +10,54 @@ from services.firebase_service import FirebaseService
 logger = logging.getLogger(__name__)
 
 class GroqService:
-    @staticmethod
-    def _get_client():
-        """Retrieve configured Groq client, or None if key is missing."""
+    _client = None
+    _client_checked = False
+
+    @classmethod
+    def initialize(cls):
+        """
+        Initializes the Groq client once at application startup.
+        Called from app.py during boot to validate the API key early.
+        Logs diagnostic status without exposing the key.
+        """
         api_key = os.environ.get('GROQ_API_KEY')
-        if not api_key or api_key == "gsk_your_groq_api_key_here":
-            logger.warning("Groq API key not configured or is placeholder. Using mock LLM responses.")
-            return None
+
+        if not api_key:
+            logger.error("[Groq] GROQ_API_KEY environment variable is NOT SET. All AI features will be unavailable.")
+            cls._client = None
+            cls._client_checked = True
+            return False
+
+        if api_key == "gsk_your_groq_api_key_here":
+            logger.error("[Groq] GROQ_API_KEY contains the placeholder value. Replace it with your real key from console.groq.com.")
+            cls._client = None
+            cls._client_checked = True
+            return False
+
+        # Mask the key for safe logging: show first 4 and last 4 chars
+        masked = api_key[:4] + "****" + api_key[-4:] if len(api_key) > 8 else "****"
+        logger.info(f"[Groq] GROQ_API_KEY detected (masked: {masked}, length: {len(api_key)})")
+
         try:
-            return Groq(api_key=api_key)
+            cls._client = Groq(api_key=api_key)
+            logger.info("[Groq] ✓ Groq client initialized successfully.")
+            cls._client_checked = True
+            return True
         except Exception as e:
-            logger.error(f"Error initializing Groq SDK client: {e}")
-            return None
+            logger.error(f"[Groq] Failed to initialize Groq SDK client: {e}")
+            cls._client = None
+            cls._client_checked = True
+            return False
+
+    @classmethod
+    def _get_client(cls):
+        """
+        Returns the cached Groq client instance.
+        If not yet initialized (e.g. called before startup), performs lazy init.
+        """
+        if not cls._client_checked:
+            cls.initialize()
+        return cls._client
 
     @classmethod
     def _call_groq_with_retry(cls, messages, model="llama-3.3-70b-versatile", response_format=None, max_retries=3, initial_delay=1.0, timeout=15.0):
@@ -32,6 +68,7 @@ class GroqService:
         """
         client = cls._get_client()
         if not client:
+            logger.warning("[Groq] Cannot execute AI request — Groq client is not initialized. Check GROQ_API_KEY.")
             return None
 
         delay = initial_delay
@@ -47,9 +84,9 @@ class GroqService:
                 )
                 return response.choices[0].message.content
             except Exception as e:
-                logger.warning(f"Groq API call attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
+                logger.warning(f"[Groq] API call attempt {attempt + 1}/{max_retries} failed: {e}. Retrying in {delay}s...")
                 if attempt == max_retries - 1:
-                    logger.error(f"Groq API call failed permanently after {max_retries} attempts.")
+                    logger.error(f"[Groq] API call failed permanently after {max_retries} attempts.")
                     break
                 time.sleep(delay)
                 delay *= 2
@@ -80,7 +117,7 @@ class GroqService:
         if response_text:
             return response_text
 
-        # Fallback response
+        # Fallback response — only used when Groq is genuinely unreachable
         focus_title = f"Focus: {focus.capitalize()}" if focus != "general" else "General Overview"
         return f"""# Study Guide: {text[:50]}... ({focus_title})
 
@@ -93,8 +130,7 @@ This document provides an overview of the content. Here are the primary insights
 1.  **Fundamental Principles**: The material highlights structural definitions and processes.
 2.  **Implementation**: Best practices emphasize iterative learning and verification.
 
-> [!NOTE]
-> This is a simulated high-fidelity study summary, generated because the Groq API key is not configured.
+> **Note**: This is a fallback summary generated because the Groq AI service could not be reached. Please verify your GROQ_API_KEY environment variable is correctly set.
 """
 
     @classmethod
@@ -118,8 +154,9 @@ This document provides an overview of the content. Here are the primary insights
             {"role": "user", "content": f"Generate {count} flashcards for:\n\n{text}"}
         ]
         
+        # Use JSON response format if client is available
         client = cls._get_client()
-        response_format = {"type": "json_object"} if client and hasattr(client, 'chat') else None
+        response_format = {"type": "json_object"} if client else None
         
         response_text = cls._call_groq_with_retry(messages, response_format=response_format)
         
