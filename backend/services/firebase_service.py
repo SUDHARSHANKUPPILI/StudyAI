@@ -64,22 +64,29 @@ class FirebaseService:
         cls._storage_checked = True
         return cls._storage_bucket
 
+    # ──────────────────────────────────────────────
+    # MATERIALS (Upload / Read / Update)
+    # ──────────────────────────────────────────────
+
     @classmethod
-    def store_document(cls, user_id, filename, file_bytes, content_type):
+    def store_document(cls, user_id, filename, file_bytes, content_type, owner_email=None):
         """
         Uploads document to Firebase Storage and saves metadata in Firestore.
         Falls back to in-memory mocks if Firebase is unavailable.
+
+        Storage path: uploads/{uid}/{filename}
         """
         doc_id = str(uuid.uuid4())
         bucket = cls.get_storage_bucket()
         db = cls.get_firestore_client()
+        now = datetime.utcnow().isoformat()
         
         file_url = f"/mock-storage/{user_id}/{doc_id}/{filename}"
         
-        # 1. Upload to Storage if available
+        # 1. Upload to Storage if available — tenant-isolated path
         if bucket:
             try:
-                blob = bucket.blob(f"documents/{user_id}/{doc_id}/{filename}")
+                blob = bucket.blob(f"uploads/{user_id}/{filename}")
                 blob.upload_from_string(file_bytes, content_type=content_type)
                 blob.make_public()
                 file_url = blob.public_url
@@ -89,11 +96,13 @@ class FirebaseService:
         
         material_meta = {
             "id": doc_id,
-            "user_id": user_id,
+            "ownerUid": user_id,
+            "ownerEmail": owner_email or "",
             "filename": filename,
             "file_url": file_url,
             "content_type": content_type,
-            "uploaded_at": datetime.utcnow().isoformat(),
+            "createdAt": now,
+            "updatedAt": now,
             "status": "processed"
         }
         
@@ -113,28 +122,35 @@ class FirebaseService:
 
     @classmethod
     def save_study_material(cls, user_id, material_id, data):
-        """Saves or updates study material."""
+        """Saves or updates study material. Verifies ownership before updating."""
         db = cls.get_firestore_client()
+        data["updatedAt"] = datetime.utcnow().isoformat()
+
         if db:
             try:
+                doc = db.collection("materials").document(material_id).get()
+                if doc.exists and doc.to_dict().get("ownerUid") != user_id:
+                    logger.warning(f"Ownership violation: user {user_id} tried to update material {material_id}")
+                    return False
                 db.collection("materials").document(material_id).update(data)
                 return True
             except Exception as e:
                 logger.error(f"Error updating study material in Firestore: {e}")
         
-        if material_id in _MOCK_DB["materials"]:
-            _MOCK_DB["materials"][material_id].update(data)
+        material = _MOCK_DB["materials"].get(material_id)
+        if material and material.get("ownerUid") == user_id:
+            material.update(data)
             return True
         return False
 
     @classmethod
     def get_study_materials(cls, user_id):
-        """Retrieves study materials for a specific user, attaching their summary metadata if present."""
+        """Retrieves study materials owned by a specific user, attaching their summary metadata if present."""
         db = cls.get_firestore_client()
         materials = []
         if db:
             try:
-                docs = db.collection("materials").where("user_id", "==", user_id).stream()
+                docs = db.collection("materials").where("ownerUid", "==", user_id).stream()
                 materials = [doc.to_dict() for doc in docs]
                 
                 # Relational Join: Fetch summaries from separate 'summaries' collection
@@ -147,7 +163,7 @@ class FirebaseService:
                 logger.error(f"Error fetching study materials from Firestore: {e}")
                 
         # In-memory fallback
-        materials_list = [m.copy() for m in _MOCK_DB["materials"].values() if m.get("user_id") == user_id]
+        materials_list = [m.copy() for m in _MOCK_DB["materials"].values() if m.get("ownerUid") == user_id]
         for m in materials_list:
             summary_key = f"{user_id}_{m['id']}"
             if summary_key in _MOCK_DB["summaries"]:
@@ -156,35 +172,42 @@ class FirebaseService:
 
     @classmethod
     def get_study_material(cls, user_id, material_id):
-        """Retrieves a single study material by ID."""
+        """Retrieves a single study material by ID. Returns None if not owned by user."""
         db = cls.get_firestore_client()
         if db:
             try:
                 doc = db.collection("materials").document(material_id).get()
                 if doc.exists:
                     data = doc.to_dict()
-                    if data.get("user_id") == user_id:
+                    if data.get("ownerUid") == user_id:
                         return data
             except Exception as e:
                 logger.error(f"Error fetching study material {material_id}: {e}")
         
         # Fallback to mock db
         material = _MOCK_DB["materials"].get(material_id)
-        if material and material.get("user_id") == user_id:
+        if material and material.get("ownerUid") == user_id:
             return material
         return None
 
+    # ──────────────────────────────────────────────
+    # SUMMARIES
+    # ──────────────────────────────────────────────
+
     @classmethod
-    def save_summary(cls, user_id, material_id, summary, length):
+    def save_summary(cls, user_id, material_id, summary, length, owner_email=None):
         """Saves generated summary to the 'summaries' collection in Firestore."""
         record_id = f"{user_id}_{material_id}"
+        now = datetime.utcnow().isoformat()
         record = {
             "id": record_id,
-            "user_id": user_id,
+            "ownerUid": user_id,
+            "ownerEmail": owner_email or "",
             "material_id": material_id,
             "summary": summary,
             "length": length,
-            "created_at": datetime.utcnow().isoformat()
+            "createdAt": now,
+            "updatedAt": now
         }
         db = cls.get_firestore_client()
         if db:
@@ -197,17 +220,24 @@ class FirebaseService:
         _MOCK_DB["summaries"][record_id] = record
         return record
 
+    # ──────────────────────────────────────────────
+    # FLASHCARDS
+    # ──────────────────────────────────────────────
+
     @classmethod
-    def save_flashcards(cls, user_id, material_id, cards):
+    def save_flashcards(cls, user_id, material_id, cards, owner_email=None):
         """Saves AI generated flashcards."""
         db = cls.get_firestore_client()
         record_id = f"{user_id}_{material_id}"
+        now = datetime.utcnow().isoformat()
         record = {
             "id": record_id,
-            "user_id": user_id,
+            "ownerUid": user_id,
+            "ownerEmail": owner_email or "",
             "material_id": material_id,
             "cards": cards,
-            "created_at": datetime.utcnow().isoformat()
+            "createdAt": now,
+            "updatedAt": now
         }
         if db:
             try:
@@ -221,35 +251,49 @@ class FirebaseService:
 
     @classmethod
     def get_flashcards(cls, user_id, material_id=None):
-        """Retrieves flashcards."""
+        """Retrieves flashcards owned by the user."""
         db = cls.get_firestore_client()
         if db:
             try:
                 if material_id:
                     doc = db.collection("flashcards").document(f"{user_id}_{material_id}").get()
-                    return doc.to_dict() if doc.exists else None
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data.get("ownerUid") == user_id:
+                            return data
+                    return None
                 else:
-                    docs = db.collection("flashcards").where("user_id", "==", user_id).stream()
+                    docs = db.collection("flashcards").where("ownerUid", "==", user_id).stream()
                     return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching flashcards from Firestore: {e}")
         
         # In-memory fallback
         if material_id:
-            return _MOCK_DB["flashcards"].get(f"{user_id}_{material_id}")
+            record = _MOCK_DB["flashcards"].get(f"{user_id}_{material_id}")
+            if record and record.get("ownerUid") == user_id:
+                return record
+            return None
         else:
-            return [f for f in _MOCK_DB["flashcards"].values() if f.get("user_id") == user_id]
+            return [f for f in _MOCK_DB["flashcards"].values() if f.get("ownerUid") == user_id]
+
+    # ──────────────────────────────────────────────
+    # QUIZZES
+    # ──────────────────────────────────────────────
 
     @classmethod
-    def save_quiz(cls, user_id, material_id, questions):
+    def save_quiz(cls, user_id, material_id, questions, owner_email=None):
         """Saves generated quiz questions."""
         quiz_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
         record = {
             "id": quiz_id,
-            "user_id": user_id,
+            "ownerUid": user_id,
+            "ownerEmail": owner_email or "",
             "material_id": material_id,
             "questions": questions,
-            "created_at": datetime.utcnow().isoformat()
+            "createdAt": now,
+            "updatedAt": now
         }
         db = cls.get_firestore_client()
         if db:
@@ -264,31 +308,38 @@ class FirebaseService:
 
     @classmethod
     def get_quizzes(cls, user_id):
-        """Retrieves quizzes generated for a user."""
+        """Retrieves quizzes owned by the user."""
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quizzes").where("user_id", "==", user_id).stream()
+                docs = db.collection("quizzes").where("ownerUid", "==", user_id).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quizzes from Firestore: {e}")
                 
-        return [q for q in _MOCK_DB["quizzes"].values() if q.get("user_id") == user_id]
+        return [q for q in _MOCK_DB["quizzes"].values() if q.get("ownerUid") == user_id]
+
+    # ──────────────────────────────────────────────
+    # QUIZ RESULTS
+    # ──────────────────────────────────────────────
 
     @classmethod
-    def save_quiz_result(cls, user_id, material_id, quiz_id, score, total_questions):
+    def save_quiz_result(cls, user_id, material_id, quiz_id, score, total_questions, owner_email=None):
         """Saves quiz score results in Firestore 'quiz_results' collection."""
         result_id = str(uuid.uuid4())
         percentage = round((score / total_questions) * 100, 1) if total_questions > 0 else 0.0
+        now = datetime.utcnow().isoformat()
         record = {
             "id": result_id,
-            "user_id": user_id,
+            "ownerUid": user_id,
+            "ownerEmail": owner_email or "",
             "material_id": material_id,
             "quiz_id": quiz_id,
             "score": score,
             "total_questions": total_questions,
             "percentage": percentage,
-            "created_at": datetime.utcnow().isoformat()
+            "createdAt": now,
+            "updatedAt": now
         }
         db = cls.get_firestore_client()
         if db:
@@ -303,29 +354,35 @@ class FirebaseService:
 
     @classmethod
     def get_quiz_results(cls, user_id):
-        """Retrieves all quiz results details completed by a user."""
+        """Retrieves all quiz results owned by the user."""
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quiz_results").where("user_id", "==", user_id).stream()
+                docs = db.collection("quiz_results").where("ownerUid", "==", user_id).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quiz results from Firestore: {e}")
                 
-        return [r for r in _MOCK_DB["quiz_results"].values() if r.get("user_id") == user_id]
+        return [r for r in _MOCK_DB["quiz_results"].values() if r.get("ownerUid") == user_id]
+
+    # ──────────────────────────────────────────────
+    # STUDY PLANNER
+    # ──────────────────────────────────────────────
 
     @classmethod
     def save_schedule(cls, user_id, schedule):
         """Saves generated study schedule/planner tasks to 'study_plans' collection."""
         db = cls.get_firestore_client()
+        now = datetime.utcnow().isoformat()
         record = {
-            "user_id": user_id,
+            "ownerUid": user_id,
             "tasks": schedule,
-            "updated_at": datetime.utcnow().isoformat()
+            "createdAt": now,
+            "updatedAt": now
         }
         if db:
             try:
-                db.collection("study_plans").document(user_id).set(record)
+                db.collection("study_plans").document(user_id).set(record, merge=True)
                 return record
             except Exception as e:
                 logger.error(f"Error saving study plan to Firestore: {e}")
@@ -341,15 +398,21 @@ class FirebaseService:
             try:
                 doc = db.collection("study_plans").document(user_id).get()
                 if doc.exists:
-                    return doc.to_dict()
+                    data = doc.to_dict()
+                    if data.get("ownerUid") == user_id:
+                        return data
             except Exception as e:
                 logger.error(f"Error fetching study plan from Firestore: {e}")
                 
-        return _MOCK_DB["study_plans"].get(user_id, {"user_id": user_id, "tasks": []})
+        return _MOCK_DB["study_plans"].get(user_id, {"ownerUid": user_id, "tasks": []})
+
+    # ──────────────────────────────────────────────
+    # ANALYTICS
+    # ──────────────────────────────────────────────
 
     @classmethod
     def get_analytics(cls, user_id):
-        """Generates or fetches study analytics metrics dynamically."""
+        """Generates or fetches study analytics metrics dynamically from user-owned data only."""
         db = cls.get_firestore_client()
         materials_count = len(cls.get_study_materials(user_id))
         quiz_results = cls.get_quiz_results(user_id)
@@ -369,15 +432,16 @@ class FirebaseService:
                 doc = doc_ref.get()
                 if doc.exists:
                     data = doc.to_dict()
-                    data["materials_count"] = materials_count
-                    data["quizzes_completed"] = quizzes_completed
-                    data["average_quiz_score"] = avg_score
-                    return data
+                    if data.get("ownerUid") == user_id:
+                        data["materials_count"] = materials_count
+                        data["quizzes_completed"] = quizzes_completed
+                        data["average_quiz_score"] = avg_score
+                        return data
             except Exception as e:
                 logger.error(f"Error fetching analytics from Firestore: {e}")
                 
         mock_analytics = {
-            "user_id": user_id,
+            "ownerUid": user_id,
             "study_time_hours": 18.5,
             "materials_count": materials_count,
             "quizzes_completed": quizzes_completed,
@@ -399,10 +463,16 @@ class FirebaseService:
         }
         return mock_analytics
 
+    # ──────────────────────────────────────────────
+    # USER PROFILE
+    # ──────────────────────────────────────────────
+
     @classmethod
     def save_user_profile(cls, user_id, profile_data):
         """Saves user custom profile details in Firestore."""
         db = cls.get_firestore_client()
+        profile_data["ownerUid"] = user_id
+        profile_data["updatedAt"] = datetime.utcnow().isoformat()
         if db:
             try:
                 db.collection("users").document(user_id).set(profile_data, merge=True)
@@ -417,36 +487,52 @@ class FirebaseService:
 
     @classmethod
     def get_user_profile(cls, user_id):
-        """Retrieves user custom profile details from Firestore."""
+        """Retrieves user custom profile details from Firestore. Returns only if owned by user."""
         db = cls.get_firestore_client()
         if db:
             try:
                 doc = db.collection("users").document(user_id).get()
                 if doc.exists:
-                    return doc.to_dict()
+                    data = doc.to_dict()
+                    if data.get("ownerUid") == user_id:
+                        return data
             except Exception as e:
                 logger.error(f"Error fetching user profile from Firestore: {e}")
                 
         return _MOCK_DB["users"].get(user_id, {
             "uid": user_id,
+            "ownerUid": user_id,
             "name": "Dev Student",
             "major": "Computer Science & Data AI",
             "level": "4 (Sophomore)"
         })
 
+    # ──────────────────────────────────────────────
+    # TUTOR CONVERSATIONS
+    # ──────────────────────────────────────────────
+
     @classmethod
     def save_chat_message(cls, user_id, message):
         """Appends a new message to the user's tutor chat history in Firestore."""
         db = cls.get_firestore_client()
+        now = datetime.utcnow().isoformat()
         if db:
             try:
                 doc_ref = db.collection("conversations").document(user_id)
                 doc = doc_ref.get()
                 messages = []
                 if doc.exists:
-                    messages = doc.to_dict().get("messages", [])
+                    data = doc.to_dict()
+                    if data.get("ownerUid") != user_id:
+                        logger.warning(f"Ownership violation: user {user_id} tried to access conversation owned by {data.get('ownerUid')}")
+                        return []
+                    messages = data.get("messages", [])
                 messages.append(message)
-                doc_ref.set({"user_id": user_id, "messages": messages, "updated_at": datetime.utcnow().isoformat()}, merge=True)
+                doc_ref.set({
+                    "ownerUid": user_id,
+                    "messages": messages,
+                    "updatedAt": now
+                }, merge=True)
                 return messages
             except Exception as e:
                 logger.error(f"Error saving chat message to Firestore: {e}")
@@ -455,23 +541,29 @@ class FirebaseService:
         if "conversations" not in _MOCK_DB:
             _MOCK_DB["conversations"] = {}
         if user_id not in _MOCK_DB["conversations"]:
-            _MOCK_DB["conversations"][user_id] = {"messages": []}
+            _MOCK_DB["conversations"][user_id] = {"ownerUid": user_id, "messages": []}
         _MOCK_DB["conversations"][user_id]["messages"].append(message)
         return _MOCK_DB["conversations"][user_id]["messages"]
 
     @classmethod
     def get_chat_history(cls, user_id):
-        """Retrieves user's tutor chat history from Firestore."""
+        """Retrieves user's tutor chat history from Firestore. Returns only if owned by user."""
         db = cls.get_firestore_client()
         if db:
             try:
                 doc = db.collection("conversations").document(user_id).get()
                 if doc.exists:
-                    return doc.to_dict().get("messages", [])
+                    data = doc.to_dict()
+                    if data.get("ownerUid") == user_id:
+                        return data.get("messages", [])
+                    return []
             except Exception as e:
                 logger.error(f"Error fetching chat history from Firestore: {e}")
                 
         # Mock DB fallback
         if "conversations" not in _MOCK_DB:
             _MOCK_DB["conversations"] = {}
-        return _MOCK_DB["conversations"].get(user_id, {}).get("messages", [])
+        conv = _MOCK_DB["conversations"].get(user_id, {})
+        if conv.get("ownerUid", user_id) == user_id:
+            return conv.get("messages", [])
+        return []

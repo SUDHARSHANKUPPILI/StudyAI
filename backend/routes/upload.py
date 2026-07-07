@@ -26,7 +26,8 @@ def upload_document():
     try:
         material = FileService.process_and_store_document(
             user_id=request.user['uid'],
-            file=file
+            file=file,
+            owner_email=request.user.get('email')
         )
         return make_success_response(
             message="File successfully uploaded and processed.",

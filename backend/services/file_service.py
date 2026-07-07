@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class FileService:
     @classmethod
-    def process_and_store_document(cls, user_id, file):
+    def process_and_store_document(cls, user_id, file, owner_email=None):
         """
         Validates the uploaded file, reads it, uploads to Firebase Storage,
         extracts text content based on file type, saves updates to Firestore,
@@ -31,7 +31,8 @@ class FileService:
             user_id=user_id,
             filename=filename,
             file_bytes=file_bytes,
-            content_type=content_type
+            content_type=content_type,
+            owner_email=owner_email
         )
 
         # 2. Extract plain text content

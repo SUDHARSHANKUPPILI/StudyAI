@@ -347,6 +347,23 @@ npm run dev
 
 ---
 
+## 🔒 Security Architecture
+
+StudyAI enforces **multi-tenant data isolation** — every user can only access their own data.
+
+| Layer | Protection |
+|---|---|
+| **Authentication** | Firebase Google Sign-In + Backend ID token verification |
+| **Data Ownership** | Every Firestore document tagged with `ownerUid` |
+| **Query Scoping** | All read queries filter by `ownerUid == authenticated_uid` |
+| **Write Verification** | All updates verify document ownership before modifying |
+| **Storage Isolation** | File uploads stored at `uploads/{uid}/{filename}` |
+| **AI Endpoints** | Material ownership verified before generating summaries, flashcards, or quizzes |
+
+> See [SECURITY.md](SECURITY.md) for the full security policy and implementation details.
+
+---
+
 ## 🚀 Deployment Guide
 
 ### Backend → Render
@@ -375,7 +392,8 @@ npm run dev
 
 ## 🔮 Future Enhancements
 
-- [ ] 🔐 Full Firebase Authentication (Google Sign-In)
+- [x] 🔐 Firebase Google Authentication
+- [x] 🛡️ Multi-tenant data isolation (ownerUid enforcement)
 - [ ] 🌍 Multi-language support (i18n)
 - [ ] 📱 Progressive Web App (PWA) support
 - [ ] 🎯 Spaced Repetition System (SRS) for flashcards

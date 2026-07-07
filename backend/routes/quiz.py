@@ -23,9 +23,17 @@ def generate_quiz():
         raise AppValidationError(detail="Input validation failed.", error_code="VALIDATION_FAILED")
         
     try:
+        user_id = request.user['uid']
         material_id = data.get("material_id", "manual_input")
+        
+        # Verify material ownership before AI generation
+        if material_id and material_id != "manual_input":
+            material = FirebaseService.get_study_material(user_id, material_id)
+            if not material:
+                raise AppValidationError(detail="Material not found or access denied.", error_code="OWNERSHIP_VIOLATION")
+        
         saved_record = GroqService.generate_and_save_quiz(
-            user_id=request.user['uid'],
+            user_id=user_id,
             text=req.text,
             count=req.count,
             material_id=material_id
@@ -35,6 +43,8 @@ def generate_quiz():
             data=saved_record
         )
     except Exception as e:
+        if isinstance(e, (AppValidationError, AppAIProcessingError)):
+            raise e
         logger.error(f"Error in generate_quiz: {e}")
         raise AppAIProcessingError("Failed to generate quiz questions.")
 
