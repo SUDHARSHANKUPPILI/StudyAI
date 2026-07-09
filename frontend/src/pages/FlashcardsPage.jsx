@@ -29,16 +29,28 @@ const FlashcardsPage = () => {
     const fetchMaterials = async () => {
       try {
         const response = await studyService.getMaterials();
-        setMaterials(response.data);
-        if (!selectedMaterial && response.data.length > 0) {
-          setSelectedMaterial(response.data[0]);
+        let list = response.data || [];
+        
+        // Eventual consistency index lag fix
+        if (location.state?.material) {
+          const fresh = location.state.material;
+          if (!list.some(m => m.id === fresh.id)) {
+            list = [fresh, ...list];
+          }
+        }
+        
+        setMaterials(list);
+        if (location.state?.material) {
+          setSelectedMaterial(location.state.material);
+        } else if (!selectedMaterial && list.length > 0) {
+          setSelectedMaterial(list[0]);
         }
       } catch (err) {
         console.error("Error loading documents:", err);
       }
     };
     fetchMaterials();
-  }, [selectedMaterial, setSelectedMaterial]);
+  }, [location.state?.material]);
 
   const handleGenerateCards = async () => {
     try {

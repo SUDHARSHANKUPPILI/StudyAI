@@ -24,11 +24,25 @@ def upload_document():
         raise AppValidationError("No selected filename.")
         
     try:
+        user_id = request.user['uid']
+        logger.info(f"[Upload Audit] Starting document upload. auth_uid={user_id}")
+        
         material = FileService.process_and_store_document(
-            user_id=request.user['uid'],
+            user_id=user_id,
             file=file,
             owner_email=request.user.get('email')
         )
+        
+        # Immediate read-back verification (Requirement 3 & 4)
+        logger.info(f"[Upload Audit] Saved material metadata. doc_id={material.get('id')}, ownerUid={material.get('ownerUid')}")
+        verified = FirebaseService.get_study_material(user_id, material.get('id'))
+        
+        logger.info(
+            f"[Upload Audit] Immediate read-back result: exists={verified is not None}, "
+            f"verified_ownerUid={verified.get('ownerUid') if verified else 'N/A'}, "
+            f"extracted_text_len={len(verified.get('extracted_text', '')) if verified else 0}"
+        )
+        
         return make_success_response(
             message="File successfully uploaded and processed.",
             data={"material": material},
@@ -47,7 +61,22 @@ def upload_document():
 def get_materials():
     """Retrieve all study materials uploaded by the user."""
     try:
-        materials = FirebaseService.get_study_materials(request.user['uid'])
+        user_id = request.user['uid']
+        logger.info(f"[List Audit] Fetching materials. auth_uid={user_id}")
+        
+        materials = FirebaseService.get_study_materials(user_id)
+        
+        logger.info(
+            f"[List Audit] Query completed. auth_uid={user_id}, "
+            f"returned_documents_count={len(materials)}"
+        )
+        for idx, m in enumerate(materials):
+            logger.info(
+                f"[List Audit] Doc #{idx}: id={m.get('id')}, "
+                f"ownerUid={m.get('ownerUid')}, user_id_legacy={m.get('user_id')}, "
+                f"filename={m.get('filename')}"
+            )
+            
         return make_success_response(
             message="Study materials retrieved successfully.",
             data=materials

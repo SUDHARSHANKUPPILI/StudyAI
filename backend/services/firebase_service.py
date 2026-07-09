@@ -171,7 +171,7 @@ class FirebaseService:
         if db:
             try:
                 # Query new ownerUid field (Requirement 9)
-                docs = db.collection("materials").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
+                docs = db.collection("materials").where(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 seen_ids = set()
                 for doc in docs:
                     data = doc.to_dict()
@@ -179,7 +179,7 @@ class FirebaseService:
                     materials.append(data)
                 
                 # Also query legacy user_id field for backward compatibility
-                legacy_docs = db.collection("materials").filter(filter=FieldFilter("user_id", "==", user_id)).stream()
+                legacy_docs = db.collection("materials").where(filter=FieldFilter("user_id", "==", user_id)).stream()
                 for doc in legacy_docs:
                     data = doc.to_dict()
                     doc_id = data.get("id", doc.id)
@@ -318,7 +318,7 @@ class FirebaseService:
                             return data
                     return None
                 else:
-                    docs = db.collection("flashcards").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
+                    docs = db.collection("flashcards").where(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                     return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching flashcards from Firestore: {e}")
@@ -367,7 +367,7 @@ class FirebaseService:
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quizzes").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
+                docs = db.collection("quizzes").where(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quizzes from Firestore: {e}")
@@ -413,7 +413,7 @@ class FirebaseService:
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quiz_results").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
+                docs = db.collection("quiz_results").where(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quiz results from Firestore: {e}")
@@ -666,16 +666,16 @@ class FirebaseService:
                 
                 # Delete related quizzes (Requirement 9)
                 quizzes = db.collection("quizzes") \
-                    .filter(filter=FieldFilter("ownerUid", "==", user_id)) \
-                    .filter(filter=FieldFilter("material_id", "==", material_id)) \
+                    .where(filter=FieldFilter("ownerUid", "==", user_id)) \
+                    .where(filter=FieldFilter("material_id", "==", material_id)) \
                     .stream()
                 for q in quizzes:
                     q.reference.delete()
                 
                 # Delete related quiz_results
                 quiz_results = db.collection("quiz_results") \
-                    .filter(filter=FieldFilter("ownerUid", "==", user_id)) \
-                    .filter(filter=FieldFilter("material_id", "==", material_id)) \
+                    .where(filter=FieldFilter("ownerUid", "==", user_id)) \
+                    .where(filter=FieldFilter("material_id", "==", material_id)) \
                     .stream()
                 for qr in quiz_results:
                     qr.reference.delete()
