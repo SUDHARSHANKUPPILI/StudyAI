@@ -77,9 +77,13 @@ const AISummaryPage = () => {
   const handleGenerateSummary = async () => {
     if (!selectedMaterial) return;
     
-    // Guard: ensure we have text to summarize
-    if (!selectedMaterial.extracted_text || selectedMaterial.extracted_text.length < 10) {
-      alert('This document has no extractable text content. Please re-upload the file.');
+    // Strict Validation (Requirement 3)
+    if (!selectedMaterial.id) {
+      alert('Validation Error: The document is missing a valid ID. Please re-upload.');
+      return;
+    }
+    if (!selectedMaterial.extracted_text || selectedMaterial.extracted_text.trim().length === 0) {
+      alert('Validation Error: The document contains no extractable text content. Please re-upload.');
       return;
     }
     
@@ -94,7 +98,7 @@ const AISummaryPage = () => {
       setMaterials(materials.map(m => m.id === selectedMaterial.id ? { ...m, summary: response.data.summary } : m));
     } catch (err) {
       console.error('Summary generation failed:', err);
-      const backendMessage = err?.response?.data?.message || err?.response?.data?.detail || 'Failed to generate summary. Please try again.';
+      const backendMessage = err?.response?.data?.message || err?.response?.data?.error || err?.response?.data?.detail || 'Failed to generate summary. Please try again.';
       alert(backendMessage);
     } finally {
       setLoading(false);

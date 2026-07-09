@@ -113,4 +113,30 @@ class FileService:
             data={"extracted_text": extracted_text}
         )
 
-        return material
+        # Immediately fetch from Firestore to verify (Requirement 2 & 1)
+        verified_material = FirebaseService.get_study_material(user_id, material['id'])
+        if not verified_material:
+            raise ValueError("Failed to retrieve the saved document from the database after upload.")
+
+        # Validate verified material fields (Requirement 1 & 2)
+        if not verified_material.get("id"):
+            raise ValueError("Saved document is missing a material ID.")
+        if not verified_material.get("ownerUid"):
+            raise ValueError("Saved document is missing a valid ownerUid.")
+        if not verified_material.get("filename"):
+            raise ValueError("Saved document is missing a filename.")
+        if not verified_material.get("createdAt"):
+            raise ValueError("Saved document is missing a createdAt timestamp.")
+        
+        extracted_text_val = verified_material.get("extracted_text")
+        if not extracted_text_val or len(extracted_text_val.strip()) == 0:
+            raise ValueError("Extracted text is empty or failed to save in the database.")
+
+        # Structured upload logs (Requirement 4)
+        logger.info(
+            f"[Upload Log] uid={user_id}, "
+            f"material_id={verified_material.get('id')}, "
+            f"extracted_text_length={len(extracted_text_val)}"
+        )
+
+        return verified_material

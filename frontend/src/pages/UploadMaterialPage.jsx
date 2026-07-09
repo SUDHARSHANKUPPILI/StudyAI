@@ -96,6 +96,14 @@ const UploadMaterialPage = () => {
       }
 
       if (material) {
+        // Strict Validation (Requirement 3)
+        if (!material.id) {
+          throw new Error("Validation Error: Document was successfully processed but is missing a valid ID.");
+        }
+        if (!material.extracted_text || material.extracted_text.trim().length === 0) {
+          throw new Error("Validation Error: The document contains no extractable text content. Please try another file.");
+        }
+
         const summaryRes = await aiService.generateSummary(
           material.extracted_text,
           summaryLength,
@@ -109,7 +117,7 @@ const UploadMaterialPage = () => {
       }
     } catch (err) {
       console.error(err);
-      const errorMsg = err.response?.data?.error || 'Failed to process document. Please try again.';
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to process document. Please try again.';
       setError(errorMsg);
       showToast(errorMsg, 'error');
     } finally {

@@ -192,27 +192,33 @@ class FirebaseService:
 
     @classmethod
     def get_study_material(cls, user_id, material_id):
-        """Retrieves a single study material by ID. Returns None if not owned by user.
+        """Retrieves a single study material by ID with built-in retries for consistency.
         
         Backward compatible: checks both 'ownerUid' (new) and 'user_id' (legacy) fields.
         """
         db = cls.get_firestore_client()
         if db:
-            try:
-                doc = db.collection("materials").document(material_id).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    doc_owner = data.get("ownerUid") or data.get("user_id")
-                    if doc_owner == user_id:
-                        # Auto-migrate legacy documents to use ownerUid
-                        if "ownerUid" not in data:
-                            logger.info(f"[Firebase] Auto-migrating legacy material {material_id} to ownerUid format")
-                            db.collection("materials").document(material_id).update({"ownerUid": user_id})
-                            data["ownerUid"] = user_id
-                        return data
-                    logger.warning(f"[Firebase] Ownership mismatch for material {material_id}: doc_owner={doc_owner}, requesting_user={user_id}")
-            except Exception as e:
-                logger.error(f"Error fetching study material {material_id}: {e}")
+            import time
+            for attempt in range(3):
+                try:
+                    doc = db.collection("materials").document(material_id).get()
+                    if doc.exists:
+                        data = doc.to_dict()
+                        doc_owner = data.get("ownerUid") or data.get("user_id")
+                        if doc_owner == user_id:
+                            # Auto-migrate legacy documents to use ownerUid
+                            if "ownerUid" not in data:
+                                logger.info(f"[Firebase] Auto-migrating legacy material {material_id} to ownerUid format")
+                                db.collection("materials").document(material_id).update({"ownerUid": user_id})
+                                data["ownerUid"] = user_id
+                            return data
+                        logger.warning(f"[Firebase] Ownership mismatch for material {material_id}: doc_owner={doc_owner}, requesting_user={user_id}")
+                except Exception as e:
+                    logger.error(f"Error fetching study material {material_id} (attempt {attempt + 1}): {e}")
+                
+                if attempt < 2:
+                    logger.info(f"[Firebase] Material {material_id} not found or ownership mismatch. Retrying in 500ms... (attempt {attempt + 1}/3)")
+                    time.sleep(0.5)
         
         # Fallback to mock db
         material = _MOCK_DB["materials"].get(material_id)

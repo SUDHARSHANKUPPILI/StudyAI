@@ -26,33 +26,52 @@ def generate_summary():
     try:
         user_id = request.user['uid']
         material_id = data.get("material_id")
+        extracted_text = req.text
         
-        logger.info(f"[Summary] Request from user={user_id}, material_id={material_id}, text_length={len(req.text)}")
-        
+        # Validation checks (Requirement 3)
+        if not material_id:
+            raise AppValidationError(detail="Validation Error: material_id is required.", error_code="MISSING_MATERIAL_ID")
+        if not extracted_text or len(extracted_text.strip()) == 0:
+            raise AppValidationError(detail="Validation Error: extracted_text cannot be empty.", error_code="EMPTY_TEXT")
+
         # Verify material ownership before AI generation
-        if material_id:
-            material = FirebaseService.get_study_material(user_id, material_id)
-            if not material:
-                logger.warning(f"[Summary] Ownership check FAILED: user={user_id}, material_id={material_id}")
-                raise AppValidationError(
-                    detail=f"Material '{material_id}' not found or you do not have access. It may have been uploaded before the ownership update — please re-upload the document.",
-                    error_code="MATERIAL_NOT_FOUND"
-                )
-            logger.info(f"[Summary] Ownership verified for material={material_id}")
+        material = FirebaseService.get_study_material(user_id, material_id)
+        material_found = material is not None
+
+        # Structured summary logs (Requirement 4)
+        logger.info(
+            f"[Summary Log] uid={user_id}, "
+            f"material_id={material_id}, "
+            f"material_found={material_found}, "
+            f"extracted_text_length={len(extracted_text) if extracted_text else 0}"
+        )
+
+        if not material_found:
+            logger.warning(f"[Summary] Ownership check FAILED: user={user_id}, material_id={material_id}")
+            raise AppValidationError(
+                detail=f"Material '{material_id}' not found or you do not have access. Please re-upload the document.",
+                error_code="MATERIAL_NOT_FOUND"
+            )
+        
+        logger.info(f"[Summary] Ownership verified for material={material_id}")
         
         # Verify Groq client is ready
         if not GroqService._get_client():
             logger.error("[Summary] Groq client is not initialized — GROQ_API_KEY may be missing on server.")
             raise AppAIProcessingError("AI service is temporarily unavailable. The server administrator must configure the GROQ_API_KEY.")
         
+        # Structured Groq logs (Requirement 4)
+        logger.info(f"[Summary Log] Groq request started for user={user_id}, material_id={material_id}")
+        
         summary = GroqService.generate_and_save_summary(
             user_id=user_id,
-            text=req.text,
+            text=extracted_text,
             length=req.length,
             focus=req.focus,
             material_id=material_id
         )
         
+        logger.info(f"[Summary Log] Groq response received for user={user_id}, material_id={material_id}")
         logger.info(f"[Summary] Successfully generated summary for user={user_id}, material_id={material_id}, summary_length={len(summary)}")
         
         return make_success_response(
