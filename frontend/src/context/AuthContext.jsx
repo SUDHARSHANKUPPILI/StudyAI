@@ -11,6 +11,23 @@ export const AuthProvider = ({ children }) => {
 
   // Monitor Firebase Auth state changes automatically
   useEffect(() => {
+    if (!auth) {
+      const localToken = localStorage.getItem('studyai_token');
+      if (localToken === "mock-token-123") {
+        setUser({
+          uid: "dev_user_123",
+          email: "student@studyai.edu",
+          name: "Dev Student",
+          is_mock: true
+        });
+      } else {
+        setUser(null);
+        setToken(null);
+      }
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
@@ -50,6 +67,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const loginWithGoogle = async () => {
+    if (!auth) {
+      const errMsg = "Authentication is currently unavailable. Firebase configuration is incomplete.";
+      console.error(errMsg);
+      alert(errMsg);
+      throw new Error(errMsg);
+    }
     setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -89,10 +112,12 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     setLoading(true);
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error signing out from Firebase:", error);
+    if (auth) {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error("Error signing out from Firebase:", error);
+      }
     }
     localStorage.removeItem('studyai_token');
     setToken(null);

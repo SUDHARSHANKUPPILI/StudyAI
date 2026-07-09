@@ -302,11 +302,18 @@ npm run dev
 | `ALLOWED_CORS_ORIGINS` | ⬜ | Comma-separated CORS origins (default: `*`) |
 | `PORT` | ⬜ | Server port (default: `5000`) |
 
-### Frontend (`frontend/.env.production`)
+### Frontend (`frontend/.env.production` or Vercel Environment Variables)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `VITE_API_BASE_URL` | ✅ | Backend API base URL |
+| `VITE_API_BASE_URL` | ✅ | Backend API base URL (e.g. `https://studyai-api.onrender.com`) |
+| `VITE_FIREBASE_API_KEY` | ✅ | Firebase Web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ✅ | Firebase Auth domain (e.g. `project-id.firebaseapp.com`) |
+| `VITE_FIREBASE_PROJECT_ID` | ✅ | Firebase Project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ✅ | Firebase Storage bucket (e.g. `project-id.appspot.com`) |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ✅ | Firebase Messaging Sender ID |
+| `VITE_FIREBASE_APP_ID` | ✅ | Firebase Web App ID |
+| `VITE_FIREBASE_MEASUREMENT_ID` | ✅ | Firebase Google Analytics Measurement ID |
 
 ---
 
