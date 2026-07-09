@@ -605,3 +605,79 @@ class FirebaseService:
         if conv.get("ownerUid", user_id) == user_id:
             return conv.get("messages", [])
         return []
+
+    @classmethod
+    def delete_study_material(cls, user_id, material_id):
+        """
+        Deletes a study material from Firebase Storage, Firestore,
+        and all related records (summaries, flashcards, quizzes, quiz_results, analytics, study_plans).
+        
+        Verifies ownership before deletion.
+        """
+        # 1. Verify ownerUid and get material metadata (Requirement 1)
+        material = cls.get_study_material(user_id, material_id)
+        if not material:
+            raise ValueError("Material not found or access denied.")
+
+        filename = material.get("filename")
+        
+        db = cls.get_firestore_client()
+        bucket = cls.get_storage_bucket()
+        
+        # 2. Delete file from Firebase Storage (Requirement 2)
+        if bucket and filename:
+            try:
+                blob = bucket.blob(f"uploads/{user_id}/{filename}")
+                if blob.exists():
+                    blob.delete()
+                    logger.info(f"[Firebase] Deleted Storage file: uploads/{user_id}/{filename}")
+            except Exception as e:
+                logger.error(f"[Firebase] Error deleting Storage file: {e}")
+                
+        # 3. Delete Firestore documents (Requirement 3 & 4)
+        if db:
+            try:
+                # Delete material document
+                db.collection("materials").document(material_id).delete()
+                logger.info(f"[Firebase] Deleted materials document: {material_id}")
+                
+                # Delete related summaries
+                db.collection("summaries").document(f"{user_id}_{material_id}").delete()
+                
+                # Delete related flashcards
+                db.collection("flashcards").document(f"{user_id}_{material_id}").delete()
+                
+                # Delete related quizzes
+                quizzes = db.collection("quizzes").where("ownerUid", "==", user_id).where("material_id", "==", material_id).stream()
+                for q in quizzes:
+                    q.reference.delete()
+                
+                # Delete related quiz_results
+                quiz_results = db.collection("quiz_results").where("ownerUid", "==", user_id).where("material_id", "==", material_id).stream()
+                for qr in quiz_results:
+                    qr.reference.delete()
+                    
+                # Delete related analytics & study plans
+                db.collection("analytics").document(user_id).delete()
+                db.collection("study_plans").document(user_id).delete()
+                logger.info(f"[Firebase] Deleted all related Firestore records for material: {material_id}")
+            except Exception as e:
+                logger.error(f"[Firebase] Error deleting Firestore records for material {material_id}: {e}")
+                raise e
+                
+        # 4. In-memory Mock DB cleanup
+        _MOCK_DB["materials"].pop(material_id, None)
+        _MOCK_DB["summaries"].pop(f"{user_id}_{material_id}", None)
+        _MOCK_DB["flashcards"].pop(f"{user_id}_{material_id}", None)
+        _MOCK_DB["study_plans"].pop(user_id, None)
+        _MOCK_DB["analytics"].pop(user_id, None)
+        
+        quizzes_to_del = [qid for qid, q in _MOCK_DB["quizzes"].items() if q.get("ownerUid") == user_id and q.get("material_id") == material_id]
+        for qid in quizzes_to_del:
+            _MOCK_DB["quizzes"].pop(qid, None)
+            
+        results_to_del = [rid for rid, r in _MOCK_DB["quiz_results"].items() if r.get("ownerUid") == user_id and r.get("material_id") == material_id]
+        for rid in results_to_del:
+            _MOCK_DB["quiz_results"].pop(rid, None)
+            
+        return True

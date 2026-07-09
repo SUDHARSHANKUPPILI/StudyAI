@@ -4,13 +4,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { marked } from 'marked';
 import studyService from '../services/studyService';
 import aiService from '../services/aiService';
+import { useToast } from '../context/ToastContext';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import { FileText, Layers, Brain, MessageSquare, ChevronRight, BookOpen, Send, X, Loader2 } from 'lucide-react';
+import { FileText, Layers, Brain, MessageSquare, ChevronRight, BookOpen, Send, X, Loader2, Trash2 } from 'lucide-react';
 
 const AISummaryPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   
   const [materials, setMaterials] = useState([]);
   const [selectedMaterial, setSelectedMaterial] = useState(location.state?.material || null);
@@ -105,6 +107,32 @@ const AISummaryPage = () => {
     }
   };
 
+  const handleDeleteMaterial = async (materialId, filename) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${filename}"? This will remove the document and all associated summaries, flashcards, quizzes, and analytics records.`)) {
+      return;
+    }
+
+    try {
+      await studyService.deleteMaterial(materialId);
+      showToast('Document and all associated study materials successfully deleted.', 'success');
+      
+      const updatedMaterials = materials.filter(m => m.id !== materialId);
+      setMaterials(updatedMaterials);
+      
+      if (selectedMaterial?.id === materialId) {
+        if (updatedMaterials.length > 0) {
+          setSelectedMaterial(updatedMaterials[0]);
+        } else {
+          setSelectedMaterial(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete material:', err);
+      const errMsg = err?.response?.data?.message || err?.response?.data?.error || 'Failed to delete material.';
+      showToast(errMsg, 'error');
+    }
+  };
+
   // Submit new user message to Flask AI tutor endpoint
   const handleSendChatMessage = async (e) => {
     e.preventDefault();
@@ -164,21 +192,32 @@ const AISummaryPage = () => {
             </h3>
             <div className="flex-1 overflow-y-auto space-y-1 px-1">
               {materials.map((m) => (
-                <button
+                <div
                   key={m.id}
-                  onClick={() => setSelectedMaterial(m)}
-                  className={`flex items-center justify-between w-full p-3 rounded-xl transition-all text-left ${
+                  className={`flex items-center justify-between w-full p-2.5 rounded-xl transition-all ${
                     selectedMaterial?.id === m.id
                       ? 'bg-brand-50 dark:bg-indigo-950/20 text-brand-600 dark:text-brand-400 border-l-4 border-brand-500'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-white'
+                      : 'text-slate-605 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <FileText size={16} className="shrink-0" />
+                  <button
+                    onClick={() => setSelectedMaterial(m)}
+                    className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                  >
+                    <FileText size={16} className="shrink-0 text-slate-400 dark:text-slate-500" />
                     <span className="text-xs font-semibold truncate">{m.filename}</span>
-                  </div>
-                  <ChevronRight size={14} className="shrink-0 opacity-60" />
-                </button>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteMaterial(m.id, m.filename);
+                    }}
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all ml-1 shrink-0"
+                    title="Delete document"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               ))}
             </div>
           </div>

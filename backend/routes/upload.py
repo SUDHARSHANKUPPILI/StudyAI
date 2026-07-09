@@ -55,3 +55,21 @@ def get_materials():
     except Exception as e:
         logger.error(f"Error fetching study materials: {e}")
         raise AppDatabaseError("Failed to load study materials.")
+
+@upload_bp.route('/api/study/materials/<material_id>', methods=['DELETE'])
+@auth_required
+def delete_material(material_id):
+    """Deletes study material, storage file, and related documents."""
+    try:
+        user_id = request.user['uid']
+        # Call FirebaseService delete (performs verification internally)
+        FirebaseService.delete_study_material(user_id, material_id)
+        return make_success_response(
+            message="Material and all related records deleted successfully.",
+            data={"material_id": material_id}
+        )
+    except ValueError as val_err:
+        raise AppValidationError(str(val_err))
+    except Exception as e:
+        logger.error(f"Error deleting material {material_id}: {e}")
+        raise AppDatabaseError(f"Failed to delete study material: {str(e)}")

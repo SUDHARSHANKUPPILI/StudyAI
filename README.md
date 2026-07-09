@@ -62,7 +62,7 @@ Built with a **Flask** REST API backend powered by **Groq's Llama 3.3 70B** mode
 
 | Feature | Description |
 |---------|-------------|
-| 📄 **Document Ingestion** | Upload PDF, DOCX, and TXT files with automatic text extraction |
+| 📄 **Document Ingestion** | Upload PDF, DOCX, and TXT files with text extraction and complete secure document deletion |
 | 🧠 **AI Study Summary** | Generates structured study guides with focus-area steering (Key Concepts, Formulas, etc.) |
 | 💬 **Context-Aware AI Tutor** | Conversational chatbot that reads your uploaded document and answers questions contextually |
 | 🃏 **Flashcard Generator** | Auto-generates active-recall flip card decks from your material |
@@ -70,7 +70,7 @@ Built with a **Flask** REST API backend powered by **Groq's Llama 3.3 70B** mode
 | 📈 **Learning Analytics** | Tracks study sessions, quiz scores, and visualizes progress over time |
 | 🗓️ **Study Planner** | AI-recommended weekly study schedules based on uploaded materials |
 | 🔐 **Secure Auth** | JWT-based authentication with Firebase backend integration |
-| ☁️ **Cloud Storage** | All materials stored securely in Firebase Storage and Firestore |
+| ☁️ **Cloud Storage** | Materials stored in Storage; deleting a document cascade-purges summaries, flashcards, quizzes, and analytics |
 
 ---
 

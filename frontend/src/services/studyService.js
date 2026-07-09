@@ -20,6 +20,15 @@ export const studyService = {
       'Content-Type': 'multipart/form-data'
     };
     return api.post('/api/uploads/document', formData, { ...config, headers });
+  },
+
+  /**
+   * Deletes a study material by ID.
+   * 
+   * @param {string} materialId - ID of the study material to delete.
+   */
+  deleteMaterial: (materialId) => {
+    return api.delete(`/api/study/materials/${materialId}`);
   }
 };
 
