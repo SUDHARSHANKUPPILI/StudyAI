@@ -57,10 +57,25 @@ class FirebaseService:
             return cls._storage_bucket
             
         try:
-            cls._storage_bucket = storage.bucket()
-            logger.info("Successfully obtained Firebase Storage bucket connection.")
+            bucket_name = os.environ.get('FIREBASE_STORAGE_BUCKET')
+            if bucket_name:
+                logger.info(f"[Firebase Admin SDK] Referencing Storage bucket explicitly: '{bucket_name}'")
+                cls._storage_bucket = storage.bucket(bucket_name)
+            else:
+                logger.warning(
+                    "[Firebase Admin SDK] FIREBASE_STORAGE_BUCKET environment variable is not set. "
+                    "Attempting default bucket resolution from initialize_app options."
+                )
+                cls._storage_bucket = storage.bucket()
+            
+            logger.info(f"[Firebase Admin SDK] Successfully connected to Storage bucket: '{cls._storage_bucket.name}'")
         except Exception as e:
-            logger.error(f"Failed to get Storage bucket (using in-memory fallback): {e}")
+            logger.error(
+                f"[Firebase Admin SDK] Failed to resolve Firebase Storage bucket: {e}. "
+                "How to fix: Ensure that the environment variable 'FIREBASE_STORAGE_BUCKET' "
+                "is set in your shell or Render environment dashboard to your Firebase project's default bucket "
+                "(e.g., 'your-project-id.appspot.com')."
+            )
             cls._storage_bucket = None
         cls._storage_checked = True
         return cls._storage_bucket
