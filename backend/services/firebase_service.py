@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 import firebase_admin
 from firebase_admin import firestore, storage
+from google.cloud.firestore import FieldFilter
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class FirebaseService:
         
         file_url = f"/mock-storage/{user_id}/{doc_id}/{filename}"
         
-        # 1. Upload to Storage if available — tenant-isolated path
+        # 1. Upload to Storage if available — tenant-isolated path (Requirement 5)
         if bucket:
             try:
                 blob = bucket.blob(f"uploads/{user_id}/{filename}")
@@ -92,7 +93,8 @@ class FirebaseService:
                 file_url = blob.public_url
                 logger.info(f"Successfully uploaded {filename} to Firebase Storage: {file_url}")
             except Exception as e:
-                logger.error(f"Failed to upload to Firebase Storage, using mock URL: {e}")
+                logger.error(f"Failed to upload to Firebase Storage: {e}")
+                raise ValueError(f"Failed to upload to Firebase Storage: {str(e)}")
         
         material_meta = {
             "id": doc_id,
@@ -153,8 +155,8 @@ class FirebaseService:
         materials = []
         if db:
             try:
-                # Query new ownerUid field
-                docs = db.collection("materials").where("ownerUid", "==", user_id).stream()
+                # Query new ownerUid field (Requirement 9)
+                docs = db.collection("materials").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 seen_ids = set()
                 for doc in docs:
                     data = doc.to_dict()
@@ -162,7 +164,7 @@ class FirebaseService:
                     materials.append(data)
                 
                 # Also query legacy user_id field for backward compatibility
-                legacy_docs = db.collection("materials").where("user_id", "==", user_id).stream()
+                legacy_docs = db.collection("materials").filter(filter=FieldFilter("user_id", "==", user_id)).stream()
                 for doc in legacy_docs:
                     data = doc.to_dict()
                     doc_id = data.get("id", doc.id)
@@ -301,7 +303,7 @@ class FirebaseService:
                             return data
                     return None
                 else:
-                    docs = db.collection("flashcards").where("ownerUid", "==", user_id).stream()
+                    docs = db.collection("flashcards").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                     return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching flashcards from Firestore: {e}")
@@ -350,7 +352,7 @@ class FirebaseService:
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quizzes").where("ownerUid", "==", user_id).stream()
+                docs = db.collection("quizzes").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quizzes from Firestore: {e}")
@@ -396,7 +398,7 @@ class FirebaseService:
         db = cls.get_firestore_client()
         if db:
             try:
-                docs = db.collection("quiz_results").where("ownerUid", "==", user_id).stream()
+                docs = db.collection("quiz_results").filter(filter=FieldFilter("ownerUid", "==", user_id)).stream()
                 return [doc.to_dict() for doc in docs]
             except Exception as e:
                 logger.error(f"Error fetching quiz results from Firestore: {e}")
@@ -647,13 +649,19 @@ class FirebaseService:
                 # Delete related flashcards
                 db.collection("flashcards").document(f"{user_id}_{material_id}").delete()
                 
-                # Delete related quizzes
-                quizzes = db.collection("quizzes").where("ownerUid", "==", user_id).where("material_id", "==", material_id).stream()
+                # Delete related quizzes (Requirement 9)
+                quizzes = db.collection("quizzes") \
+                    .filter(filter=FieldFilter("ownerUid", "==", user_id)) \
+                    .filter(filter=FieldFilter("material_id", "==", material_id)) \
+                    .stream()
                 for q in quizzes:
                     q.reference.delete()
                 
                 # Delete related quiz_results
-                quiz_results = db.collection("quiz_results").where("ownerUid", "==", user_id).where("material_id", "==", material_id).stream()
+                quiz_results = db.collection("quiz_results") \
+                    .filter(filter=FieldFilter("ownerUid", "==", user_id)) \
+                    .filter(filter=FieldFilter("material_id", "==", material_id)) \
+                    .stream()
                 for qr in quiz_results:
                     qr.reference.delete()
                     
