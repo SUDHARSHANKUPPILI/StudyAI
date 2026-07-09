@@ -145,13 +145,30 @@ class FirebaseService:
 
     @classmethod
     def get_study_materials(cls, user_id):
-        """Retrieves study materials owned by a specific user, attaching their summary metadata if present."""
+        """Retrieves study materials owned by a specific user, attaching their summary metadata if present.
+        
+        Backward compatible: queries both 'ownerUid' (new) and 'user_id' (legacy) fields.
+        """
         db = cls.get_firestore_client()
         materials = []
         if db:
             try:
+                # Query new ownerUid field
                 docs = db.collection("materials").where("ownerUid", "==", user_id).stream()
-                materials = [doc.to_dict() for doc in docs]
+                seen_ids = set()
+                for doc in docs:
+                    data = doc.to_dict()
+                    seen_ids.add(data.get("id", doc.id))
+                    materials.append(data)
+                
+                # Also query legacy user_id field for backward compatibility
+                legacy_docs = db.collection("materials").where("user_id", "==", user_id).stream()
+                for doc in legacy_docs:
+                    data = doc.to_dict()
+                    doc_id = data.get("id", doc.id)
+                    if doc_id not in seen_ids:
+                        materials.append(data)
+                        seen_ids.add(doc_id)
                 
                 # Relational Join: Fetch summaries from separate 'summaries' collection
                 for m in materials:
@@ -163,7 +180,10 @@ class FirebaseService:
                 logger.error(f"Error fetching study materials from Firestore: {e}")
                 
         # In-memory fallback
-        materials_list = [m.copy() for m in _MOCK_DB["materials"].values() if m.get("ownerUid") == user_id]
+        materials_list = [
+            m.copy() for m in _MOCK_DB["materials"].values()
+            if m.get("ownerUid") == user_id or m.get("user_id") == user_id
+        ]
         for m in materials_list:
             summary_key = f"{user_id}_{m['id']}"
             if summary_key in _MOCK_DB["summaries"]:
@@ -172,22 +192,34 @@ class FirebaseService:
 
     @classmethod
     def get_study_material(cls, user_id, material_id):
-        """Retrieves a single study material by ID. Returns None if not owned by user."""
+        """Retrieves a single study material by ID. Returns None if not owned by user.
+        
+        Backward compatible: checks both 'ownerUid' (new) and 'user_id' (legacy) fields.
+        """
         db = cls.get_firestore_client()
         if db:
             try:
                 doc = db.collection("materials").document(material_id).get()
                 if doc.exists:
                     data = doc.to_dict()
-                    if data.get("ownerUid") == user_id:
+                    doc_owner = data.get("ownerUid") or data.get("user_id")
+                    if doc_owner == user_id:
+                        # Auto-migrate legacy documents to use ownerUid
+                        if "ownerUid" not in data:
+                            logger.info(f"[Firebase] Auto-migrating legacy material {material_id} to ownerUid format")
+                            db.collection("materials").document(material_id).update({"ownerUid": user_id})
+                            data["ownerUid"] = user_id
                         return data
+                    logger.warning(f"[Firebase] Ownership mismatch for material {material_id}: doc_owner={doc_owner}, requesting_user={user_id}")
             except Exception as e:
                 logger.error(f"Error fetching study material {material_id}: {e}")
         
         # Fallback to mock db
         material = _MOCK_DB["materials"].get(material_id)
-        if material and material.get("ownerUid") == user_id:
-            return material
+        if material:
+            mat_owner = material.get("ownerUid") or material.get("user_id")
+            if mat_owner == user_id:
+                return material
         return None
 
     # ──────────────────────────────────────────────

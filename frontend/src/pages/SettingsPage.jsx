@@ -10,7 +10,6 @@ const SettingsPage = () => {
   const [activeModel, setActiveModel] = useState('llama-3.3-70b-versatile');
   const [enableSpacedRepetition, setEnableSpacedRepetition] = useState(true);
   const [enableFirebaseCache, setEnableFirebaseCache] = useState(true);
-  const [groqKeyPlaceholder, setGroqKeyPlaceholder] = useState('gsk_••••••••••••••••••••');
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-10 text-slate-700 dark:text-slate-350">
@@ -64,26 +63,35 @@ const SettingsPage = () => {
             </div>
           </div>
 
-          {/* Section 2: Integrations Keys */}
+          {/* Section 2: Server Configuration Info */}
           <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800/60 shadow-sm space-y-6">
             <h3 className="font-display font-bold text-md text-slate-900 dark:text-white flex items-center gap-2">
-              <Key size={18} className="text-accent-500" />
-              <span>API Credentials</span>
+              <Database size={18} className="text-accent-500" />
+              <span>Server Configuration</span>
             </h3>
 
-            <div className="space-y-4 text-xs">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-semibold text-slate-500 uppercase tracking-wider">Groq API Key</label>
-                <input
-                  type="text"
-                  value={groqKeyPlaceholder}
-                  onChange={(e) => setGroqKeyPlaceholder(e.target.value)}
-                  className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 text-slate-500 outline-none"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 leading-normal">
-                  To secure your keys, values are passed to the Flask backend context and never stored in the client-side state.
-                </span>
+            <div className="space-y-3 text-xs">
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800/50">
+                <Key size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 block">AI Service (Groq API)</span>
+                  <span className="text-[10px] text-slate-500 leading-normal">
+                    Managed via server environment variable. Not accessible from the client.
+                  </span>
+                </div>
               </div>
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800/50">
+                <Database size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 block">Firebase Credentials</span>
+                  <span className="text-[10px] text-slate-500 leading-normal">
+                    Managed via server environment variable. Not accessible from the client.
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 pt-1 leading-normal">
+                All API keys and service credentials are stored securely as server-side environment variables on Render and are never transmitted to the browser.
+              </p>
             </div>
           </div>
         </div>

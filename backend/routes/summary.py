@@ -20,17 +20,30 @@ def generate_summary():
         data = request.get_json() or {}
         req = SummaryRequestSchema(**data)
     except ValidationError as e:
-        raise AppValidationError(detail="Input validation failed.", error_code="VALIDATION_FAILED")
+        logger.warning(f"[Summary] Validation failed: {e}")
+        raise AppValidationError(detail="Input validation failed. 'text' field requires at least 10 characters.", error_code="VALIDATION_FAILED")
         
     try:
         user_id = request.user['uid']
         material_id = data.get("material_id")
         
+        logger.info(f"[Summary] Request from user={user_id}, material_id={material_id}, text_length={len(req.text)}")
+        
         # Verify material ownership before AI generation
         if material_id:
             material = FirebaseService.get_study_material(user_id, material_id)
             if not material:
-                raise AppValidationError(detail="Material not found or access denied.", error_code="OWNERSHIP_VIOLATION")
+                logger.warning(f"[Summary] Ownership check FAILED: user={user_id}, material_id={material_id}")
+                raise AppValidationError(
+                    detail=f"Material '{material_id}' not found or you do not have access. It may have been uploaded before the ownership update — please re-upload the document.",
+                    error_code="MATERIAL_NOT_FOUND"
+                )
+            logger.info(f"[Summary] Ownership verified for material={material_id}")
+        
+        # Verify Groq client is ready
+        if not GroqService._get_client():
+            logger.error("[Summary] Groq client is not initialized — GROQ_API_KEY may be missing on server.")
+            raise AppAIProcessingError("AI service is temporarily unavailable. The server administrator must configure the GROQ_API_KEY.")
         
         summary = GroqService.generate_and_save_summary(
             user_id=user_id,
@@ -39,6 +52,9 @@ def generate_summary():
             focus=req.focus,
             material_id=material_id
         )
+        
+        logger.info(f"[Summary] Successfully generated summary for user={user_id}, material_id={material_id}, summary_length={len(summary)}")
+        
         return make_success_response(
             message="Summary generated successfully.",
             data={
@@ -47,10 +63,10 @@ def generate_summary():
             }
         )
     except Exception as e:
-        if isinstance(e, (AppValidationError, AppAIProcessingError)):
+        if isinstance(e, (AppValidationError, AppAIProcessingError, AppDatabaseError)):
             raise e
-        logger.error(f"Error in generate_summary: {e}")
-        raise AppAIProcessingError("Failed to generate AI summary. Try again later.")
+        logger.error(f"[Summary] Unhandled error: {type(e).__name__}: {e}", exc_info=True)
+        raise AppAIProcessingError(f"Failed to generate AI summary: {type(e).__name__}. Check server logs for details.")
 
 @summary_bp.route('/api/ai/tutor', methods=['POST'])
 @auth_required

@@ -76,6 +76,13 @@ const AISummaryPage = () => {
 
   const handleGenerateSummary = async () => {
     if (!selectedMaterial) return;
+    
+    // Guard: ensure we have text to summarize
+    if (!selectedMaterial.extracted_text || selectedMaterial.extracted_text.length < 10) {
+      alert('This document has no extractable text content. Please re-upload the file.');
+      return;
+    }
+    
     setLoading(true);
     try {
       const response = await aiService.generateSummary(
@@ -86,7 +93,9 @@ const AISummaryPage = () => {
       setSelectedMaterial({ ...selectedMaterial, summary: response.data.summary });
       setMaterials(materials.map(m => m.id === selectedMaterial.id ? { ...m, summary: response.data.summary } : m));
     } catch (err) {
-      console.error(err);
+      console.error('Summary generation failed:', err);
+      const backendMessage = err?.response?.data?.message || err?.response?.data?.detail || 'Failed to generate summary. Please try again.';
+      alert(backendMessage);
     } finally {
       setLoading(false);
     }
