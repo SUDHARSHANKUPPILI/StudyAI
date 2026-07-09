@@ -57,6 +57,8 @@ def verify_startup_config():
     groq_key = os.environ.get('GROQ_API_KEY')
     bucket_name = os.environ.get('FIREBASE_STORAGE_BUCKET')
     
+    log.info(f"[Config Startup Log] Configured Firebase Storage Bucket: '{bucket_name}'")
+    
     if env == 'production':
         missing = []
         if not groq_key or groq_key.startswith("gsk_your_groq"):
