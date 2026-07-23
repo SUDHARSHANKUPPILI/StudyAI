@@ -1,5 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -125,6 +126,7 @@ function App() {
               {/* Fallback Redirect */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            <Analytics />
           </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
